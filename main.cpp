@@ -8,6 +8,8 @@ using namespace std;
 //! Переменные с индентификаторами ID
 //! ID шейдерной программы
 GLuint Program;
+//! ID юниформ переменной цвета
+GLint Unif_color;
 float rotate_z = 0.0f;
 //! Проверка ошибок OpenGL, если есть то вывод в консоль тип ошибки
 void checkOpenGLerror() {
@@ -15,8 +17,59 @@ void checkOpenGLerror() {
 	if ((errCode = glGetError()) != GL_NO_ERROR)
 		std::cout << "OpenGl error! - " << gluErrorString(errCode) << "\n";
 }
+
+//! Освобождение шейдеров
+void freeShader()
+{
+	//! Передавая ноль, мы отключаем шейдрную программу
+	glUseProgram(0);
+	//! Удаляем шейдерную программу
+	glDeleteProgram(Program);
+}
+void resizeWindow(int width, int height)
+{
+	glViewport(0, 0, width, height);
+}
+
+void specialKeys(int key, int x, int y) {
+
+	switch (key) {
+	case GLUT_KEY_UP: rotate_z += 5.0f; break;
+	case GLUT_KEY_DOWN: rotate_z -= 5.0f; break;
+	}
+	glutPostRedisplay();
+}
+
+//! Отрисовка
+void renderTriangle()
+{
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+	glLoadIdentity();
+	//! Передаем юниформ в шейдер
+	glRotatef(rotate_z, 0.0, 0.0, 1.0);
+	//! Устанавливаем шейдерную программу текущей
+	glUseProgram(Program);
+
+	glBegin(GL_TRIANGLES);
+	glColor3f(1.0, 0.0, 0.0);
+	glVertex2f(-0.5f, -0.5f);
+	glColor3f(0.0, 1.0, 0.0);
+	glVertex2f(0.5f, -0.5f);
+	glColor3f(0.0, 0.0, 1.0);
+	glVertex2f(0.0f, 0.5f);
+	glEnd();
+
+	glFlush();
+
+	//! Отключаем шейдерную программу
+	glUseProgram(0);
+	checkOpenGLerror();
+	glutSwapBuffers();
+}
+
 //! Инициализация шейдеров
-void initShader()
+void initShaderTriangle()
 {
 	//! Исходный код шейдеров
 	const char* fsSource =
@@ -59,20 +112,9 @@ void initShader()
 
 	checkOpenGLerror();
 }
-//! Освобождение шейдеров
-void freeShader()
-{
-	//! Передавая ноль, мы отключаем шейдрную программу
-	glUseProgram(0);
-	//! Удаляем шейдерную программу
-	glDeleteProgram(Program);
-}
-void resizeWindow(int width, int height)
-{
-	glViewport(0, 0, width, height);
-}
+
 //! Отрисовка
-void render2()
+void renderCube()
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
@@ -81,15 +123,19 @@ void render2()
 	glRotatef(rotate_z, 0.0, 0.0, 1.0);
 	//! Устанавливаем шейдерную программу текущей
 	glUseProgram(Program);
-
-	glBegin(GL_TRIANGLES);
-		glColor3f(1.0, 0.0, 0.0);
-		glVertex2f(-0.5f, -0.5f);
-		glColor3f(0.0, 1.0, 0.0);
-		glVertex2f(0.5f, -0.5f);		
-		glColor3f(0.0, 0.0, 1.0);
-		glVertex2f(0.0f, 0.5f);
-	glEnd(); 
+	static float black[4] = { 0.0f, 0.0f, 0.0f, 1.0f };
+	//! Передаем юниформ в шейдер
+	glUniform4fv(Unif_color, 1, black);
+	glBegin(GL_QUADS);	
+	glColor3f(1.0, 1.0, 1.0);
+	glVertex2f(-0.5f, -0.5f);	
+	glColor3f(0.0, 0.0, 1.0);
+	glVertex2f(-0.5f, 0.5f);	
+	glColor3f(0.0, 1.0, 0.0);
+	glVertex2f(0.5f, 0.5f);	
+	glColor3f(1.0, 0.0, 0.0);
+	glVertex2f(0.5f, -0.5f);
+	glEnd();
 
 	glFlush();
 
@@ -98,14 +144,174 @@ void render2()
 	checkOpenGLerror();
 	glutSwapBuffers();
 }
-void specialKeys(int key, int x, int y) {
 
-	switch (key) {
-	case GLUT_KEY_UP: rotate_z += 5.0f; break;
-	case GLUT_KEY_DOWN: rotate_z -= 5.0f; break;
+//! Инициализация шейдеров
+void initShaderTabby()
+{
+	//! Исходный код шейдеров
+	const char* fsSource =
+		"uniform vec4 color;\n"
+		"void main() {\n"
+		" if (mod(sqrt(gl_FragCoord.x * gl_FragCoord.x + gl_FragCoord.y * gl_FragCoord.y), 10) < 5.0)\n"
+		" gl_FragColor = color;\n"
+		" else\n"
+		" gl_FragColor = vec4(1.0,0.0,1.0,0.0);\n"
+		"}\n";
+	//! Переменные для хранения идентификаторов шейдеров
+	GLuint fShader;
+	//! Создаем фрагментный шейдер
+	fShader = glCreateShader(GL_FRAGMENT_SHADER);
+	//! Передаем исходный код
+	glShaderSource(fShader, 1, &fsSource, NULL);
+	//! Компилируем шейдер
+	glCompileShader(fShader);
+	int compile_ok;
+	glGetShaderiv(fShader, GL_COMPILE_STATUS, &compile_ok);
+	if (!compile_ok)
+	{
+		std::cout << "error compile shaders \n";
+		int loglen;
+		glGetShaderiv(fShader, GL_INFO_LOG_LENGTH, &loglen);
+		int realLogLen;
+		char* log = new char[loglen];
+		glGetShaderInfoLog(fShader, loglen, &realLogLen, log);
+		std::cout << log << "\n";
+		delete log;
 	}
-	glutPostRedisplay();
+	//! Создаем программу и прикрепляем шейдеры к ней
+	Program = glCreateProgram();
+	glAttachShader(Program, fShader);
+	//! Линкуем шейдерную программу
+	glLinkProgram(Program);
+	//! Проверяем статус сборки
+	int link_ok;
+	glGetProgramiv(Program, GL_LINK_STATUS, &link_ok);
+	if (!link_ok)
+	{
+		std::cout << "error attach shaders \n";
+	}
+	//! Вытягиваем ID юниформ
+	const char* unif_name = "color";
+	Unif_color = glGetUniformLocation(Program, unif_name);
+	if (Unif_color == -1)
+	{
+		std::cout << "could not bind uniform " << unif_name << std::endl;
+		return;
+	}
+
+	checkOpenGLerror();
 }
+
+//! Инициализация шейдеров
+void initShaderCell()
+{
+	//! Исходный код шейдеров
+	const char* fsSource =
+		"uniform vec4 color;\n"
+		"void main() {\n"
+		" if (mod(gl_FragCoord.x * gl_FragCoord.y, 10)<5.0) \n"
+		" gl_FragColor = color;\n"
+		" else\n"
+		" gl_FragColor = vec4(1.0,0.0,1.0,0.0);\n"
+		"}\n";
+	//! Переменные для хранения идентификаторов шейдеров
+	GLuint fShader;
+	//! Создаем фрагментный шейдер
+	fShader = glCreateShader(GL_FRAGMENT_SHADER);
+	//! Передаем исходный код
+	glShaderSource(fShader, 1, &fsSource, NULL);
+	//! Компилируем шейдер
+	glCompileShader(fShader);
+	int compile_ok;
+	glGetShaderiv(fShader, GL_COMPILE_STATUS, &compile_ok);
+	if (!compile_ok)
+	{
+		std::cout << "error compile shaders \n";
+		int loglen;
+		glGetShaderiv(fShader, GL_INFO_LOG_LENGTH, &loglen);
+		int realLogLen;
+		char* log = new char[loglen];
+		glGetShaderInfoLog(fShader, loglen, &realLogLen, log);
+		std::cout << log << "\n";
+		delete log;
+	}
+	//! Создаем программу и прикрепляем шейдеры к ней
+	Program = glCreateProgram();
+	glAttachShader(Program, fShader);
+	//! Линкуем шейдерную программу
+	glLinkProgram(Program);
+	//! Проверяем статус сборки
+	int link_ok;
+	glGetProgramiv(Program, GL_LINK_STATUS, &link_ok);
+	if (!link_ok)
+	{
+		std::cout << "error attach shaders \n";
+	}
+	//! Вытягиваем ID юниформ
+	const char* unif_name = "color";
+	Unif_color = glGetUniformLocation(Program, unif_name);
+	if (Unif_color == -1)
+	{
+		std::cout << "could not bind uniform " << unif_name << std::endl;
+		return;
+	}
+
+	checkOpenGLerror();
+}
+
+//! Инициализация шейдеров
+void initShaderRainbowCude()
+{
+	//! Исходный код шейдеров
+	const char* fsSource =
+		"void main() {\n"
+		"	gl_FragColor = gl_Color;\n"
+		"}\n";
+	//! Переменные для хранения идентификаторов шейдеров
+	GLuint fShader;
+	//! Создаем фрагментный шейдер
+	fShader = glCreateShader(GL_FRAGMENT_SHADER);
+	//! Передаем исходный код
+	glShaderSource(fShader, 1, &fsSource, NULL);
+	//! Компилируем шейдер
+	glCompileShader(fShader);
+	int compile_ok;
+	glGetShaderiv(fShader, GL_COMPILE_STATUS, &compile_ok);
+	if (!compile_ok)
+	{
+		std::cout << "error compile shaders \n";
+		int loglen;
+		glGetShaderiv(fShader, GL_INFO_LOG_LENGTH, &loglen);
+		int realLogLen;
+		char* log = new char[loglen];
+		glGetShaderInfoLog(fShader, loglen, &realLogLen, log);
+		std::cout << log << "\n";
+		delete log;
+	}
+	//! Создаем программу и прикрепляем шейдеры к ней
+	Program = glCreateProgram();
+	glAttachShader(Program, fShader);
+	//! Линкуем шейдерную программу
+	glLinkProgram(Program);
+	//! Проверяем статус сборки
+	int link_ok;
+	glGetProgramiv(Program, GL_LINK_STATUS, &link_ok);
+	if (!link_ok)
+	{
+		std::cout << "error attach shaders \n";
+	}
+	//! Вытягиваем ID юниформ
+	const char* unif_name = "color";
+	Unif_color = glGetUniformLocation(Program, unif_name);
+	if (Unif_color == -1)
+	{
+		std::cout << "could not bind uniform " << unif_name << std::endl;
+		return;
+	}
+
+	checkOpenGLerror();
+}
+
 int main(int argc, char** argv)
 {
 	setlocale(LC_ALL, "");
@@ -113,7 +319,7 @@ int main(int argc, char** argv)
 	glutInitDisplayMode(GLUT_DEPTH | GLUT_RGBA | GLUT_ALPHA | GLUT_DOUBLE);
 	glutInitWindowSize(800, 800);
 	glutCreateWindow("Simple shaders");
-	glClearColor(0, 0, 1, 0);
+	glClearColor(0, 0, 0, 0);
 	//! Обязательно перед инициализацией шейдеров
 	GLenum glew_status = glewInit();
 	if (GLEW_OK != glew_status)
@@ -129,10 +335,18 @@ int main(int argc, char** argv)
 		std::cout << "No support for OpenGL 2.0 found\n";
 		return 1;
 	}
-	//! Инициализация шейдеров
-	initShader();
+	//! Инициализация шейдеров	
 	glutReshapeFunc(resizeWindow);
-	glutDisplayFunc(render2);
+
+	//initShaderTriangle();
+	//glutDisplayFunc(renderTriangle);
+
+	//initShaderTabby();
+	initShaderCell();	
+	//initShaderRainbowCude();
+	glutDisplayFunc(renderCube);
+
+
 	glutSpecialFunc(specialKeys);
 	glutMainLoop();
 	//! Освобождение ресурсов
